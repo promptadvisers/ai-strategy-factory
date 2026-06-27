@@ -6,6 +6,7 @@ and mermaid diagram rendering.
 """
 
 import re
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Callable, Any
@@ -301,12 +302,24 @@ class GenerationOrchestrator:
         return format_map.get(suffix, "unknown")
 
     def _record_error(self, component: str, error: str) -> None:
-        """Record an error during generation."""
+        """Record an error during generation.
+
+        Captures the active traceback (when called from an ``except`` block) and
+        prints immediately, so failures are visible in run logs and persistable
+        to state.json instead of being silently swallowed.
+        """
+        tb = traceback.format_exc()
+        if not tb or tb.strip() == "NoneType: None":
+            tb = None
         self.errors.append({
             "component": component,
             "error": error,
+            "traceback": tb,
             "timestamp": datetime.now().isoformat(),
         })
+        print(f"\n  [generation error] {component}: {error}")
+        if tb:
+            print(tb)
 
     def _report_progress(self, message: str, progress: float) -> None:
         """Report progress to callback if set."""

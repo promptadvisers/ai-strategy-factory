@@ -69,6 +69,20 @@ class MermaidRenderer:
         """Check if mermaid-cli (mmdc) is available."""
         return shutil.which("mmdc") is not None
 
+    def _mmdc_command(self, args: List[str]) -> List[str]:
+        """Build a platform-correct command for invoking mmdc.
+
+        On Windows, ``mmdc`` is installed as ``mmdc.cmd`` -- a batch shim that
+        ``CreateProcess`` cannot launch directly, so a bare
+        ``subprocess.run(["mmdc", ...])`` raises ``FileNotFoundError``
+        (``[WinError 2]``) even when mermaid-cli is on PATH. Route the call
+        through ``cmd.exe`` so PATHEXT is honored.
+        """
+        mmdc = shutil.which("mmdc") or "mmdc"
+        if os.name == "nt":
+            return ["cmd", "/c", mmdc, *args]
+        return [mmdc, *args]
+
     def render_from_markdown(
         self,
         company_slug: str,
@@ -235,15 +249,14 @@ class MermaidRenderer:
 
             try:
                 # Run mmdc - use simpler command without puppeteerConfigFile
-                cmd = [
-                    "mmdc",
+                cmd = self._mmdc_command([
                     "-i", mmd_path,
                     "-o", str(output_path),
                     "-c", config_path,
                     "-w", str(width),
                     "-H", str(height),
                     "-b", background,
-                ]
+                ])
 
                 print(f"Running: {' '.join(cmd)}")
 
@@ -257,12 +270,11 @@ class MermaidRenderer:
                 if result.returncode != 0:
                     print(f"mmdc error (code {result.returncode}): {result.stderr}")
                     # Try without config file as fallback
-                    cmd_simple = [
-                        "mmdc",
+                    cmd_simple = self._mmdc_command([
                         "-i", mmd_path,
                         "-o", str(output_path),
                         "-b", background,
-                    ]
+                    ])
                     result = subprocess.run(
                         cmd_simple,
                         capture_output=True,
@@ -310,8 +322,11 @@ class MermaidRenderer:
         """
         placeholder_path = output_path.with_suffix('.mmd')
 
-        content = f"""# Mermaid Diagram
-# Render this diagram at https://mermaid.live/
+        # NOTE: mermaid uses '%%' for comments; a leading '#' is INVALID and makes
+        # both mmdc and mermaid.live fail with "No diagram type detected", which
+        # would also break this manual-render escape hatch.
+        content = f"""%% Mermaid Diagram
+%% Render this diagram at https://mermaid.live/
 
 {mermaid_code}
 """
