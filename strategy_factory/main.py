@@ -629,7 +629,12 @@ Examples:
                         tracker.complete_deliverable(d_id, d_path)
                         break
 
-            # Complete phase
+            # Persist any generation errors to state.json so failures (e.g. a
+            # deck that failed to build) are debuggable later, not just printed.
+            for err in orchestrator.get_errors():
+                tracker.state.errors.append(err)
+
+            # Complete phase (this saves state, including the errors appended above)
             summary = f"Generated {len(result.deliverables)} files in {result.generation_time:.1f}s"
             tracker.complete_phase("generation", summary)
 
